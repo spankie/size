@@ -7,7 +7,7 @@ use std::{env, fs, io};
 //
 fn main() {
     let cwd = get_directory_from_args();
-    println!("get file size information for: {}\n", cwd);
+    println!("current working directory: {}\n", cwd);
     match get_files_in_directory(cwd.as_str()) {
         Ok(file_names) => {
             for file_name in file_names {
@@ -43,6 +43,8 @@ fn get_directory_from_args() -> String {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         println!("current working directory is being used");
+        // TODO: make sure not to use the current working directory if the path
+        // begins with /
         return cwd;
     }
     let path = &args[1];
