@@ -1,4 +1,4 @@
-use std::{env, fs, io};
+use std::{env, fs, io, path::PathBuf};
 
 // get the list of directories and files in pwd
 // loop through every item and do the following
@@ -9,12 +9,12 @@ fn main() {
     let cwd = get_directory_from_args();
     println!("current working directory: {}\n", cwd);
     match get_files_in_directory(cwd.as_str()) {
-        Ok(file_names) => {
-            for file_name in file_names {
+        Ok(file_paths) => {
+            for file_path in file_paths {
                 // check if this is a directory or a file
                 // if its a file, then print the size
-                let filepath = format!("{cwd}/{file_name}");
-                let metadata = fs::metadata(filepath);
+                let file_name = file_path.to_str().unwrap();
+                let metadata = file_path.metadata();
                 if metadata.is_ok() {
                     let mt = metadata.as_ref();
                     let size: f32;
@@ -23,7 +23,7 @@ fn main() {
                     } else {
                         // get the size of each file in the directory
                         size = get_file_sizes_of_directory(
-                            String::from(format!("{cwd}/{file_name}")).as_str(),
+                            String::from(format!("{file_name}")).as_str(),
                         );
                     };
                     println!("{:.3}KB - {file_name}", size / 1000.0);
@@ -41,14 +41,26 @@ fn get_directory_from_args() -> String {
     let cwd = pwd.as_os_str().to_str().unwrap().to_owned();
 
     let args: Vec<String> = env::args().collect();
+    for arg in args.iter() {
+        println!("arg: {}", arg);
+    }
     if args.len() < 2 {
         println!("current working directory is being used");
-        // TODO: make sure not to use the current working directory if the path
-        // begins with /
         return cwd;
     }
     let path = &args[1];
-    println!("path: {}", path);
+    if path.starts_with("/") {
+        println!("absolute path is being used");
+        return path.to_owned();
+    }
+    if path.starts_with("./") {
+        println!("relative path is being used");
+        return format!("{}/{}", cwd, path.replace("./", ""));
+    }
+    if path == "." {
+        println!("current working directory is being used");
+        return cwd;
+    }
     return format!("{}/{}", cwd, path);
 }
 
@@ -56,45 +68,54 @@ fn get_directory_from_args() -> String {
 fn get_file_sizes_of_directory(path: &str) -> f32 {
     let mut size: f32 = 0.0;
     match get_files_in_directory(path) {
-        Ok(file_names) => {
-            for file_name in file_names {
-                let filepath = format!("{path}/{file_name}");
-                let metadata = fs::metadata(filepath.clone());
-                let mt = metadata.as_ref();
-                let file_size = mt.unwrap().len(); //metadata.unwrap().len();
-                let is_file = mt.unwrap().is_file();
-                if is_file {
-                    // println!("{:.3}KB - {file_name}", size as f32/1000.0);
-                    size = size + file_size as f32;
-                } else {
-                    size = size + get_file_sizes_of_directory(&filepath);
+        Ok(file_paths) => {
+            for file_path in file_paths {
+                if file_path.is_symlink() {
+                    continue;
+                }
+                // check if the program have permission to open the file
+                match file_path.metadata() {
+                    Ok(file_metadata) => {
+                        let file_size = file_metadata.len(); //metadata.unwrap().len();
+                        let is_file = file_metadata.is_file();
+                        if is_file {
+                            size = size + file_size as f32;
+                        } else {
+                            size = size + get_file_sizes_of_directory(file_path.to_str().unwrap());
+                        }
+                    }
+                    Err(e) => {
+                        match e.kind() {
+                            io::ErrorKind::PermissionDenied => {
+                                // println!("Permission denied for file: {}", file_path.to_str().unwrap());
+                                continue;
+                            }
+                            _ => {
+                                println!("Error getting metadata: {}", e);
+                            }
+                        }
+                    }
                 }
             }
         }
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error getting the size of a directory {}: {}", path, e),
     }
 
     return size;
 }
 
 // get the list of files and directory names in a folder specified by the path arguments
-fn get_files_in_directory(path: &str) -> io::Result<Vec<String>> {
+fn get_files_in_directory(path: &str) -> io::Result<Vec<PathBuf>> {
     // Get a list of all entries in the folder
     let entries = fs::read_dir(path)?;
 
-    // Extract the filenames from the directory entries and store them in a vector
-    let file_names: Vec<String> = entries
+    // Extract the filenames filePaths the directory entries and store them in a vector
+    let file_paths: Vec<PathBuf> = entries
         .filter_map(|entry| {
             let path = entry.ok()?.path();
-            // if path.is_file() {
-            // let f = path.file();//.unwrap().len()
-            // let f = entry.ok()?.file();
-            path.file_name()?.to_str().map(|s| s.to_owned())
-            // } else {
-            // None
-            // }
+            Some(path)
         })
         .collect();
 
-    Ok(file_names)
+    Ok(file_paths)
 }
