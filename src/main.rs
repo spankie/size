@@ -1,4 +1,4 @@
-use std::{env, fs, io, path::PathBuf};
+use std::{collections::HashMap, env, fs, io, path::PathBuf};
 
 // get the list of directories and files in pwd
 // loop through every item and do the following
@@ -7,9 +7,10 @@ use std::{env, fs, io, path::PathBuf};
 //
 fn main() {
     let cwd = get_directory_from_args();
-    println!("current working directory: {}\n", cwd);
+    // println!("current working directory: {}\n", cwd);
     match get_files_in_directory(cwd.as_str()) {
         Ok(file_paths) => {
+            let mut map: HashMap<String, f32> = HashMap::new();
             for file_path in file_paths {
                 // check if this is a directory or a file
                 // if its a file, then print the size
@@ -22,18 +23,46 @@ fn main() {
                         size = mt.unwrap().len() as f32;
                     } else {
                         // get the size of each file in the directory
-                        size = get_file_sizes_of_directory(
-                            String::from(format!("{file_name}")).as_str(),
-                        );
+                        size = get_file_sizes_of_directory(file_name);
                     };
-                    println!("{:.3}KB - {file_name}", size / 1000.0);
+                    match file_path.file_name() {
+                        Some(file_name) => {
+                            map.insert(file_name.to_str().unwrap().to_owned(), size);
+                        }
+                        None => {
+                            println!("cant find the file name");
+                        }
+                    }
                 } else {
                     println!("cant find the metadata")
                 }
             }
-        }
+            let mut vec: Vec<(&String, &f32)> = map.iter().collect();
+            vec.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
+
+            for (key, value) in vec {
+                print_size(*value, key);
+            }
+          }
+
+        
         Err(e) => println!("Error: {}", e),
     }
+}
+
+fn print_size(mut size: f32, file_name: &str) {
+    size = size / 1000.0;
+    if size < 1000.0 {
+        println!("{:>10.3}KB - {file_name}", size);
+        return;
+    }
+    size = size / 1000.0;
+    if size < 1000.0 {
+        println!("{:>10.3}MB - {file_name}", size);
+        return;
+    }
+    size = size / 1000.0;
+    println!("{:>10.3}GB - {file_name}", size);
 }
 
 fn get_directory_from_args() -> String {
@@ -41,9 +70,6 @@ fn get_directory_from_args() -> String {
     let cwd = pwd.as_os_str().to_str().unwrap().to_owned();
 
     let args: Vec<String> = env::args().collect();
-    for arg in args.iter() {
-        println!("arg: {}", arg);
-    }
     if args.len() < 2 {
         println!("current working directory is being used");
         return cwd;
